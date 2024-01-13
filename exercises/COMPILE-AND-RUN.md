@@ -1,3 +1,4 @@
+# General workflow
 1. `git checkout changes`
 2. Make the modifications to `Acse.y`, `Acse.lex` and other source files of the compiler required to add a feature (e.g. adding support for the modulo operator)
 2. Modify `program.src` (which is already valid LANCE code) using the added feature
@@ -12,3 +13,7 @@
 6. `git diff main changes > exercises/ex5-1.patch`
 7. `git commit -m "solve exercise" && git push`
 8. delete changes branch
+
+# To apply patch
+1. `git checkout applied-patch`
+2. `git apply exercises/ex5-1.patch`: the changes are applied!
