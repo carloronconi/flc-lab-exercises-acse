@@ -1,0 +1,49 @@
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..174748c 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -438,6 +438,19 @@ read_statement : READ LPAR IDENTIFIER RPAR
+                /* free the memory associated with the IDENTIFIER */
+                free($3);
+             }
++                | READ LPAR IDENTIFIER LSQUARE exp RSQUARE RPAR
++            {
++                t_axe_variable *v_ident = getVariable(program , $3);
++                if (!v_ident ->isArray) {
++                    yyerror("The specified variable is not an array!");
++                    YYERROR;
++                }
++
++                int reg = getNewRegister(program);
++                gen_read_instruction(program, reg);
++                storeArrayElement(program, $3, $5, create_expression(reg, REGISTER));
++                free($3);
++            }
+ ;
+             
+ write_statement : WRITE LPAR exp RPAR 
+diff --git a/program.src b/program.src
+new file mode 100644
+index 0000000..58a451f
+--- /dev/null
++++ b/program.src
+@@ -0,0 +1,18 @@
++int x, y, z = 42;
++int arr[10];
++int i;
++
++/*
++read(x);
++read(y);
++i=0;
++*/
++/*
++while (i < 10) {
++arr[i] = (y - x) * z;
++i = i + 1;
++}
++*/
++z = x * y;
++read(arr[3]);
++write(arr[3]);
+\ No newline at end of file
