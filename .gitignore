@@ -5,6 +5,7 @@
 *.log
 *.d
 *.o
+*.asm
 *.tab.c
 *.tab.h
 *.yy.c
@@ -21,3 +22,4 @@ tests/*/sy_table.out
 .vscode
 compile_commands.json
 obj
+.idea
