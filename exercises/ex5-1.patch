@@ -1,0 +1,95 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..ca9022b 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -69,6 +69,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "-"               { return MINUS; }
+ "*"               { return MUL_OP; }
+ "/"               { return DIV_OP; }
++"%"               { return MOD_OP; }
+ "&"               { return AND_OP; }
+ "|"               { return OR_OP; }
+ "!"               { return NOT_OP; }
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..45b2ef2 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -117,7 +117,7 @@ extern void yyerror(const char*);
+ 
+ %token EOF_TOK /* end of file */
+ %token LBRACE RBRACE LPAR RPAR LSQUARE RSQUARE
+-%token SEMI PLUS MINUS MUL_OP DIV_OP
++%token SEMI PLUS MINUS MUL_OP DIV_OP MOD_OP
+ %token AND_OP OR_OP NOT_OP
+ %token ASSIGN LT GT SHL_OP SHR_OP EQ NOTEQ LTEQ GTEQ
+ %token ANDAND OROR
+@@ -153,7 +153,7 @@ extern void yyerror(const char*);
+ %left LT GT LTEQ GTEQ
+ %left SHL_OP SHR_OP
+ %left MINUS PLUS
+-%left MUL_OP DIV_OP
++%left MUL_OP DIV_OP MOD_OP
+ %right NOT_OP
+ 
+ /*=========================================================================
+@@ -515,6 +515,38 @@ exp: NUMBER      { $$ = create_expression ($1, IMMEDIATE); }
+    | exp MINUS exp  { $$ = handle_bin_numeric_op(program, $1, $3, SUB); }
+    | exp MUL_OP exp { $$ = handle_bin_numeric_op(program, $1, $3, MUL); }
+    | exp DIV_OP exp { $$ = handle_bin_numeric_op(program, $1, $3, DIV); }
++   | exp MOD_OP exp {
++                        if ($1.expression_type==IMMEDIATE && $3.expression_type==IMMEDIATE)
++                        {   /* here we're writing C code for folding, so I could just use the "%" op directly! */
++                            int a = $1.value;
++                            int b = $3.value;
++                            int q = a / b;
++                            int r = a - q * b;
++                            $$ = create_expression(r , IMMEDIATE);
++                        }
++                        else
++                        {   /* here: could have used the handle_bin_numeric op 3 times */
++                            int r1, r2, rres1, rres2, rres3;
++
++                            if ($1.expression_type == IMMEDIATE)
++                                r1 = gen_load_immediate(program , $1.value);
++                            else
++                                r1 = $1.value;
++
++                            if ($3.expression_type == IMMEDIATE)
++                                r2 = gen_load_immediate(program , $3.value);
++                            else
++                                r2 = $3.value;
++
++                            rres1 = getNewRegister(program);
++                            gen_div_instruction(program, rres1, r1, r2, CG_DIRECT_ALL);
++                            rres2 = getNewRegister(program);
++                            gen_mul_instruction(program, rres2, rres1, r2, CG_DIRECT_ALL);
++                            rres3 = getNewRegister(program);
++                            gen_sub_instruction(program, rres3, r1, rres2, CG_DIRECT_ALL);
++                            $$ = create_expression(rres3, REGISTER);
++                        }
++                    }
+    | exp LT exp     { $$ = handle_binary_comparison(program, $1, $3, _LT_); }
+    | exp GT exp     { $$ = handle_binary_comparison(program, $1, $3, _GT_); }
+    | exp EQ exp     { $$ = handle_binary_comparison(program, $1, $3, _EQ_); }
+diff --git a/program.src b/program.src
+new file mode 100644
+index 0000000..3b7c86d
+--- /dev/null
++++ b/program.src
+@@ -0,0 +1,15 @@
++int x, y, z = 42;
++int arr[10];
++int i;
++
++read(x);
++read(y);
++i=0;
++/*
++while (i < 10) {
++arr[i] = (y - x) * z;
++i = i + 1;
++}
++*/
++z = x % y;
++write(z);
+\ No newline at end of file
