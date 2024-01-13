@@ -9,9 +9,10 @@
 ./bin/asm output.asm
 ./bin/mace output.o
 ```
-5. `git checkout main`
+5. `git add . && git commit -m "Make changes"`
+6. `git checkout main`
 6. `git diff main changes > exercises/ex5-1.patch`
-7. `git commit -m "solve exercise" && git push`
+7. `git add . && git commit -m "solve exercise" && git push`
 8. delete changes branch
 
 # To apply patch
