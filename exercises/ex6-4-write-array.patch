@@ -1,0 +1,87 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..5634d53 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -93,6 +93,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"write_array"     { return WRITE_ARR; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..7325046 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -125,6 +125,7 @@ extern void yyerror(const char*);
+ %token RETURN
+ %token READ
+ %token WRITE
++%token WRITE_ARR
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
+@@ -456,6 +457,28 @@ write_statement : WRITE LPAR exp RPAR
+                /* write to standard output an integer value */
+                gen_write_instruction (program, location);
+             }
++                | WRITE_ARR LPAR IDENTIFIER RPAR
++            {
++                t_axe_variable *v_ident = getVariable(program , $3);
++                if (!v_ident ->isArray) {
++                    yyerror("The specified variable is not an array!");
++                    YYERROR;
++                }
++
++                int idx_r = gen_load_immediate(program, 0);
++                t_axe_label* cond_label = assignNewLabel(program);
++
++                t_axe_label* end_label = newLabel(program);
++                gen_subi_instruction(program, REG_0, idx_r, v_ident->arraySize);
++                gen_beq_instruction(program, end_label, 0);
++
++                int elem_r = loadArrayElement(program, $3, create_expression(idx_r, REGISTER));
++                gen_write_instruction(program, elem_r);
++                gen_addi_instruction(program, idx_r, idx_r, 1);
++
++                gen_bt_instruction(program, cond_label, 0);
++                assignLabel(program, end_label);
++            }
+ ;
+ 
+ exp: NUMBER      { $$ = create_expression ($1, IMMEDIATE); }
+diff --git a/program.src b/program.src
+index 45d8c41..cddc458 100644
+--- a/program.src
++++ b/program.src
+@@ -1,13 +1,20 @@
+ int x, y, z = 42;
+ int arr[10];
+ int i;
++int a[3];
+ 
+ read(x);
+-read(y);
+-i=0;
+-while (i < 10) {
+-arr[i] = (y - x) * z;
+-i = i + 1;
++
++a[0] = 11;
++a[1] = 2;
++a[2] = 4;
++
++write_array(a);
++/* syntactic sugar for:
++int j = 0;
++int len = a.size();
++while (j < len) {
++    write(a[j]);
++    j++;
+ }
+-z = x * y;
+-write(z);
+\ No newline at end of file
++*/
+\ No newline at end of file
