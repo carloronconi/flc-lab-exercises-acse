@@ -2,7 +2,7 @@
 - void createVariable
 - int get_symbol_location
 - void gen_addi_instruction
-- void gen_add_instruction
+- void gen_addi_instruction(program , r_var , REG_0 , 42);
 - void gen_read_instruction
 
 # 2
