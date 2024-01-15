@@ -1,0 +1,146 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..bd35ee0 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -93,6 +93,8 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"random"          { return RANDOM; }
++"randomize"       { return RANDOMIZE; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..0d4b23a 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -50,6 +50,7 @@ int num_error;       /* the number of errors found in the code. This value
+                       * in the code. */
+ int num_warning;     /* As for the `num_error' global variable, this one
+                       * keeps track of all the warning messages displayed */
++int store_r;
+ 
+ /* errorcode is defined inside "axe_engine.c" */
+ extern int errorcode;   /* this variable is used to test if an error is found
+@@ -125,6 +126,8 @@ extern void yyerror(const char*);
+ %token RETURN
+ %token READ
+ %token WRITE
++%token RANDOM
++%token RANDOMIZE
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
+@@ -167,7 +170,13 @@ extern void yyerror(const char*);
+       2. A list of instructions. (at least one instruction!).
+  * When the rule associated with the non-terminal `program' is executed,
+  * the parser notifies it to the `program' singleton instance. */
+-program  : var_declarations statements EOF_TOK
++program  : var_declarations
++         {
++            store_r = getNewRegister(program);
++            gen_move_immediate(program, store_r, 12345);
++
++         }
++         statements EOF_TOK
+          {
+             /* Notify the end of the program. Once called
+              * the function `set_end_Program' - if necessary -
+@@ -248,6 +257,7 @@ statement   : assign_statement SEMI      { /* does nothing */ }
+             | control_statement          { /* does nothing */ }
+             | read_write_statement SEMI  { /* does nothing */ }
+             | SEMI            { gen_nop_instruction(program); }
++            | randomize_statement SEMI   { /* does nothing */ }
+ ;
+ 
+ control_statement : if_statement         { /* does nothing */ }
+@@ -260,6 +270,14 @@ read_write_statement : read_statement  { /* does nothing */ }
+                      | write_statement { /* does nothing */ }
+ ;
+ 
++randomize_statement : RANDOMIZE LPAR exp RPAR
++                    {
++                        if($3.expression_type == IMMEDIATE)
++                            gen_move_immediate(program, store_r, $3.value);
++                        else
++                            gen_add_instruction(program, store_r, REG_0, $3.value, CG_DIRECT_ALL);
++                    }
++
+ assign_statement : IDENTIFIER LSQUARE exp RSQUARE ASSIGN exp
+             {
+                /* Notify to `program' that the value $6
+@@ -544,6 +562,29 @@ exp: NUMBER      { $$ = create_expression ($1, IMMEDIATE); }
+                            (program, exp_r0, $2, SUB);
+                   }
+                }
++   | RANDOM LPAR RPAR
++   {
++        /* (1664525 × n + 1013904223) mod (2 ^ 32) */
++        int res_a_r = getNewRegister(program);
++        gen_muli_instruction(program, res_a_r, store_r, 1664525);
++        gen_addi_instruction(program, res_a_r, res_a_r, 1013904223);
++
++        /*      formula for modulo
++                int q = a / b;
++                int r = a - q * b;
++        */
++        /*  actually: modulo not required because 2^32 in 32-bit: numbers are already "wrapped around" 2 ^ 32
++            when they overflow!
++        int res_q_r = getNewRegister(program);
++        gen_divi_instruction(program, res_q_r, res_a_r, 4294967296);
++        gen_muli_instruction(program, res_q_r, res_q_r, 4294967296);
++        gen_sub_instruction(program, res_a_r, res_a_r, res_q_r, CG_DIRECT_ALL);
++        */
++
++        gen_add_instruction(program, store_r, REG_0, res_a_r, CG_DIRECT_ALL);
++
++        $$ = create_expression(store_r, REGISTER);
++   }
+ ;
+ 
+ %%
+diff --git a/acse/CORRECTION.md b/acse/CORRECTION.md
+new file mode 100644
+index 0000000..b1ae761
+--- /dev/null
++++ b/acse/CORRECTION.md
+@@ -0,0 +1,5 @@
++# Comments
++1. Good: actually came up w/o looking at sol with the idea to generate at the beginning right after declarations the code to populate the store_r
++2. Good: out of luck, didn't realize that re-using the store_r could produce incorrect results in expressions like `random() * random()`, but still I didn't re-use it and just copied at the end like in the solution
++3. Mistake: uselessly used handle_bin_op instead of working with the immediates in the LCG formula, fixed after looking at solution
++4. Mistake: created the modulo part of the LCG formula, while in solution they probably forgot to add it? They didn't forget, adding it actually broke the code because using mod 2^32 in 32-bit register actually means doing nothing
+\ No newline at end of file
+diff --git a/program.src b/program.src
+index 45d8c41..06e81a0 100644
+--- a/program.src
++++ b/program.src
+@@ -1,13 +1,14 @@
+-int x, y, z = 42;
+-int arr[10];
+-int i;
++int a, i;
+ 
+-read(x);
+-read(y);
+-i=0;
+-while (i < 10) {
+-arr[i] = (y - x) * z;
+-i = i + 1;
++i = 0;
++while (i < 3) {
++    write(random());
++    i = i + 1;
+ }
+-z = x * y;
+-write(z);
+\ No newline at end of file
++/* 87628868, 71072467, -1962130922 */
++randomize(12300 + 45);
++write(random());
++/* writes 87628868 */
++a = random() / 1000 + 7;
++write(a);
++/* writes 71072467 / 1000 + 7 = 71079 */
+\ No newline at end of file
