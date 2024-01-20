@@ -1,4 +1,5 @@
-*.pdf
+ReleaseNotes.pdf
+ToolchainManual.pdf
 *~
 *.backup
 *.aux
