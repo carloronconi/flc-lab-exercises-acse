@@ -1,0 +1,161 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..5ba002d 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -93,6 +93,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"zip"             { return ZIP; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..ff18d6d 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -125,6 +125,7 @@ extern void yyerror(const char*);
+ %token RETURN
+ %token READ
+ %token WRITE
++%token ZIP
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
+@@ -245,6 +246,7 @@ statements  : statements statement       { /* does nothing */ }
+ /* A statement can be either an assignment statement or a control statement
+  * or a read/write statement or a semicolon */
+ statement   : assign_statement SEMI      { /* does nothing */ }
++            | zip_statement SEMI         { /* does nothing */ }
+             | control_statement          { /* does nothing */ }
+             | read_write_statement SEMI  { /* does nothing */ }
+             | SEMI            { gen_nop_instruction(program); }
+@@ -260,6 +262,56 @@ read_write_statement : read_statement  { /* does nothing */ }
+                      | write_statement { /* does nothing */ }
+ ;
+ 
++zip_statement : IDENTIFIER ASSIGN ZIP LPAR IDENTIFIER COMMA IDENTIFIER RPAR
++            {
++                t_axe_variable* arr_var1 = getVariable(program, $1);
++                t_axe_variable* arr_var2 = getVariable(program, $5);
++                t_axe_variable* arr_var3 = getVariable(program, $7);
++
++                if (!arr_var1 || !arr_var1->isArray || !arr_var2 || !arr_var2->isArray || !arr_var3 || !arr_var3->isArray) {
++                   yyerror("write_array argument not a valid array identifier!");
++                   YYERROR;
++                }
++
++                int min_src_size = arr_var2->arraySize;
++                if(min_src_size > arr_var3->arraySize)
++                    min_src_size = arr_var3->arraySize;
++
++                int i_r = gen_load_immediate(program, 0);
++                int j_r = gen_load_immediate(program, 0);
++                t_axe_label* loop_label = assignNewLabel(program);
++
++                t_axe_label* exit_label = newLabel(program);
++
++                /* check to do a[j] = b[i]
++                gen_subi_instruction(program, REG_0, j_r, arr_var1->arraySize);
++                gen_bge_instruction(program, exit_label, 0);
++                int move_r = loadArrayElement(program, $5, create_expression(i_r, REGISTER));
++                storeArrayElement(program, $1, create_expression(j_r, REGISTER), create_expression(move_r, REGISTER));
++
++                /* check to do a[j+1] = c[i]
++                gen_addi_instruction(program, j_r, j_r, 1);
++                gen_subi_instruction(program, REG_0, j_r, arr_var1->arraySize);
++                gen_bge_instruction(program, exit_label, 0);
++                move_r = loadArrayElement(program, $7, create_expression(i_r, REGISTER));
++                storeArrayElement(program, $1, create_expression(j_r, REGISTER), create_expression(move_r, REGISTER));
++
++                gen_addi_instruction(program, i_r, i_r, 1);
++                gen_addi_instruction(program, j_r, j_r, 1);
++
++                /* back to loop_label if both i < arraySize2 and i < arraySize3 */
++                gen_subi_instruction(program, REG_0, i_r, min_src_size);
++                gen_blt_instruction(program, loop_label, 0);
++
++                assignLabel(program, exit_label);
++
++                /* ALWAYS free the identifiers */
++                free($1);
++                free($5);
++                free($7);
++            }
++;
++
+ assign_statement : IDENTIFIER LSQUARE exp RSQUARE ASSIGN exp
+             {
+                /* Notify to `program' that the value $6
+diff --git a/acse/CORRECTION.md b/acse/CORRECTION.md
+new file mode 100644
+index 0000000..233145c
+--- /dev/null
++++ b/acse/CORRECTION.md
+@@ -0,0 +1,3 @@
++- couldn't figure out how to branch back to loop if both conditions hold true: actually could compute min size at compile time (array sizes are known) and then branch normally when i < minimum of two sizes
++- forgot to free IDENTIFIERs
++- unsure why doesn't work: basically the same apart from switched ordering of out-of-bounds check
+\ No newline at end of file
+diff --git a/program.src b/program.src
+index 45d8c41..9d92e7e 100644
+--- a/program.src
++++ b/program.src
+@@ -1,13 +1,45 @@
+-int x, y, z = 42;
+-int arr[10];
++int a[5], b[6], c[12];
+ int i;
+ 
+-read(x);
+-read(y);
+-i=0;
+-while (i < 10) {
+-arr[i] = (y - x) * z;
+-i = i + 1;
++read(i);
++
++i = 0;
++while (i < 5) {
++    a[i] = i + 1;
++    i = i + 1;
++}
++
++read(i);
++
++i = 0;
++while (i < 6) {
++    b[i] = (i + 1) * 10;
++    i = i + 1;
++}
++
++read(i);
++
++i = 0;
++while (i < 12) {
++    c[i] = 0;
++    i = i + 1;
+ }
+-z = x * y;
+-write(z);
+\ No newline at end of file
++
++read(i);
++
++c = zip(a, b);
++
++read(i);
++
++i = 0;
++while (i < 12) {
++    write(c[i]);
++    i = i + 1;
++}
++
++a = zip(b, c);
++i = 0;
++while (i < 5) {
++    write(a[i]);
++    i = i + 1;
++}
+\ No newline at end of file
