@@ -1,0 +1,104 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..ec880bd 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -93,6 +93,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"count_ones"      { return COUNTONES; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..bd0e966 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -125,6 +125,7 @@ extern void yyerror(const char*);
+ %token RETURN
+ %token READ
+ %token WRITE
++%token COUNTONES
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
+@@ -544,6 +545,40 @@ exp: NUMBER      { $$ = create_expression ($1, IMMEDIATE); }
+                            (program, exp_r0, $2, SUB);
+                   }
+                }
++   | COUNTONES LPAR exp RPAR {
++                                if($3.expression_type == IMMEDIATE) {
++                                    int res = 0;
++                                    int val = $3.value; // UNSIGNED FROM SOL?
++                                    for(int i = 0; i < 32; i++) {
++                                        res += val & 1;
++                                        val = val >> 1;
++                                    }
++                                    $$ = $3;
++                                    $$.value = res;
++                                } else {
++                                    int res_r = gen_load_immediate(program, 0);
++                                    int val_r = getNewRegister(program);
++                                    gen_add_instruction(program, val_r, REG_0, $3.value, CG_DIRECT_ALL);
++
++                                    int i_r = gen_load_immediate(program, 0);
++
++                                    t_axe_label* loop_label = assignNewLabel(program);
++                                    gen_subi_instruction(program, REG_0, i_r, 32);
++                                    t_axe_label* exit_label = newLabel(program);
++                                    gen_beq_instruction(program, exit_label, 0);
++
++                                    int add_r = getNewRegister(program);
++                                    gen_andbi_instruction(program, add_r, val_r, 1);
++                                    gen_add_instruction(program, res_r, res_r, add_r, CG_DIRECT_ALL);
++                                    gen_shri_instruction(program, val_r, val_r, 1);
++
++                                    gen_addi_instruction(program, i_r, i_r, 1);
++                                    gen_bt_instruction(program, loop_label, 0);
++                                    assignLabel(program, exit_label);
++
++                                    $$ = create_expression(res_r, REGISTER);
++                                }
++                             }
+ ;
+ 
+ %%
+diff --git a/acse/CORRECTION.md b/acse/CORRECTION.md
+new file mode 100644
+index 0000000..7d99a52
+--- /dev/null
++++ b/acse/CORRECTION.md
+@@ -0,0 +1,3 @@
++- couldn't figure out how to count 1-bits in C: for 32 times do bitwise `acc += num & 1` (which is 1 if the last bit is 1 and 0 otherwise) and then do `num = num >> 1`
++- didn't use unsigned int but just int in immediate computation: what is the issue?
++- looping a pre-defined amount of time doesn't require using two labels like in normal for-loops
+\ No newline at end of file
+diff --git a/program.src b/program.src
+index 45d8c41..2c1513f 100644
+--- a/program.src
++++ b/program.src
+@@ -1,13 +1,10 @@
+-int x, y, z = 42;
+-int arr[10];
+-int i;
++int a = 123456, b;
+ 
+-read(x);
+-read(y);
+-i=0;
+-while (i < 10) {
+-arr[i] = (y - x) * z;
+-i = i + 1;
+-}
+-z = x * y;
+-write(z);
+\ No newline at end of file
++b = count_ones(a) + 100;
++write(b); // 106
++
++b = count_ones(a - 64 + 255);
++write(b); // 13
++
++b = count_ones(-1);
++write(b); // 32
+\ No newline at end of file
