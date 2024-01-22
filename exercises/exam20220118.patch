@@ -1,0 +1,174 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..2921952 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -93,6 +93,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"converge"        { return CONVERGE; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..e2ee906 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -109,6 +109,7 @@ extern void yyerror(const char*);
+    t_list *list;
+    t_axe_label *label;
+    t_while_statement while_stmt;
++   t_converge_statement conv_stmt;
+ } 
+ /*=========================================================================
+                                TOKENS 
+@@ -128,6 +129,7 @@ extern void yyerror(const char*);
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
++%token <conv_stmt> CONVERGE
+ %token <label> IF
+ %token <label> ELSE
+ %token <intval> TYPE
+@@ -254,6 +256,7 @@ control_statement : if_statement         { /* does nothing */ }
+             | while_statement            { /* does nothing */ }
+             | do_while_statement SEMI    { /* does nothing */ }
+             | return_statement SEMI      { /* does nothing */ }
++            | converge_statement         { /* does nothing */ }
+ ;
+ 
+ read_write_statement : read_statement  { /* does nothing */ }
+@@ -420,6 +423,45 @@ return_statement : RETURN
+             }
+ ;
+ 
++converge_statement : CONVERGE IDENTIFIER
++            {
++                t_axe_variable* id_var = getVariable(program, $2);
++                if (id_var->isArray) {
++                   yyerror("Converge can't be used with array variable!");
++                   YYERROR;
++                }
++
++                $1 = create_converge_statement();
++
++                // copy initial value of identifier to struct
++                int id_r = get_symbol_location(program, $2, 0);
++                $1.prev_value_r = getNewRegister(program);
++                gen_add_instruction(program, $1.prev_value_r, REG_0, id_r, CG_DIRECT_ALL);
++
++                $1.loop_label = assignNewLabel(program);
++            }
++                    code_block
++            {
++
++                // if current value (id_r) != previous value ($1.prev_value_r) update previous value and branch back
++                // get register of current value and create temp register
++                int id_r = get_symbol_location(program, $2, 0);
++                int cond_r = getNewRegister(program);
++
++                // copy previous value to cond_r
++                gen_add_instruction(program, cond_r, REG_0, $1.prev_value_r, CG_DIRECT_ALL);
++
++                // update previous value to current value
++                gen_add_instruction(program, $1.prev_value_r, REG_0, id_r, CG_DIRECT_ALL);
++
++                // check if current value == previous value
++                gen_sub_instruction(program, REG_0, cond_r, id_r, CG_DIRECT_ALL);
++                gen_bne_instruction(program, $1.loop_label, 0);
++
++                free($2);
++            }
++;
++
+ read_statement : READ LPAR IDENTIFIER RPAR 
+             {
+                int location;
+diff --git a/acse/CORRECTION.md b/acse/CORRECTION.md
+new file mode 100644
+index 0000000..8a01fef
+--- /dev/null
++++ b/acse/CORRECTION.md
+@@ -0,0 +1,3 @@
++- was in doubt if needing to malloc the struct assigned to the token, but copied WHILE implementation (which doesn't malloc) and was right
++- when compiled and ran first time I realized I had done more than required (always looping first time) which wasn't correct and fixed it immediately: read assignments correctly
++- after looking at solution realized I could have avoided using a register and skipped a couple of lines of code with slightly smarter solution of copying old value right before loop iteration
+\ No newline at end of file
+diff --git a/acse/axe_struct.c b/acse/axe_struct.c
+index c63d1e5..7f0c9d2 100644
+--- a/acse/axe_struct.c
++++ b/acse/axe_struct.c
+@@ -100,6 +100,13 @@ t_while_statement create_while_statement()
+    return statement;
+ }
+ 
++t_converge_statement create_converge_statement(){
++    t_converge_statement statement;
++
++    statement.loop_label = NULL;
++    statement.prev_value_r = 0;
++}
++
+ t_axe_label * alloc_label(int value)
+ {
+    t_axe_label *result;
+diff --git a/acse/axe_struct.h b/acse/axe_struct.h
+index 00cb86f..0123139 100644
+--- a/acse/axe_struct.h
++++ b/acse/axe_struct.h
+@@ -110,6 +110,12 @@ typedef struct t_while_statement
+                                     * that follows the while construct */
+ } t_while_statement;
+ 
++typedef struct t_converge_statement
++{
++    t_axe_label* loop_label;
++    int prev_value_r;
++} t_converge_statement;
++
+ /* create a label */
+ extern t_axe_label *alloc_label(int value);
+ 
+@@ -122,6 +128,8 @@ extern t_axe_expression create_expression(int value, int type);
+ /* create an instance that will mantain infos about a while statement */
+ extern t_while_statement create_while_statement();
+ 
++extern t_converge_statement create_converge_statement();
++
+ /* create an instance of `t_axe_register' */
+ extern t_axe_register *alloc_register(int ID, int indirect);
+ 
+diff --git a/program.src b/program.src
+index 45d8c41..1d91159 100644
+--- a/program.src
++++ b/program.src
+@@ -1,13 +1,16 @@
+-int x, y, z = 42;
+-int arr[10];
+-int i;
++int a, b;
++a = 31;
++converge a {
++a = a / 3;
++write(a);
++}
++// Iterates 5 times, and writes:
++// 10, 3, 1, 0, 0
++
++read(b);
+ 
+-read(x);
+-read(y);
+-i=0;
+-while (i < 10) {
+-arr[i] = (y - x) * z;
+-i = i + 1;
++converge a {
++write(a);
+ }
+-z = x * y;
+-write(z);
+\ No newline at end of file
++// Iterates 1 time, and writes:
++// 0
+\ No newline at end of file
