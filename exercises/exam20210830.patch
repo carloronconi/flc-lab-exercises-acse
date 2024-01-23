@@ -1,0 +1,115 @@
+diff --git a/acse/Acse.lex b/acse/Acse.lex
+index 35f9b73..2ce1686 100644
+--- a/acse/Acse.lex
++++ b/acse/Acse.lex
+@@ -84,6 +84,7 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "&&"              { return ANDAND; }
+ "||"              { return OROR; }
+ ","               { return COMMA; }
++":"               { return COLON; }
+ 
+ "do"              { return DO; }
+ "else"            { return ELSE; }
+@@ -93,6 +94,8 @@ ID       [a-zA-Z_][a-zA-Z0-9_]*
+ "return"          { return RETURN; }
+ "read"            { return READ; }
+ "write"           { return WRITE; }
++"select"          { return SELECT; }
++"case"            { return CASE; }
+ 
+ {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
+ {DIGIT}+          { yylval.intval = atoi( yytext );
+diff --git a/acse/Acse.y b/acse/Acse.y
+index 0636dc6..3ee5a88 100644
+--- a/acse/Acse.y
++++ b/acse/Acse.y
+@@ -94,6 +94,9 @@ t_io_infos *file_infos;    /* input and output files used by the compiler */
+ extern int yylex(void);
+ extern void yyerror(const char*);
+ 
++int select_val_r;
++t_axe_label* select_label;
++
+ %}
+ %expect 1
+ 
+@@ -125,6 +128,9 @@ extern void yyerror(const char*);
+ %token RETURN
+ %token READ
+ %token WRITE
++%token COLON
++%token SELECT
++%token CASE
+ 
+ %token <label> DO
+ %token <while_stmt> WHILE
+@@ -254,6 +260,43 @@ control_statement : if_statement         { /* does nothing */ }
+             | while_statement            { /* does nothing */ }
+             | do_while_statement SEMI    { /* does nothing */ }
+             | return_statement SEMI      { /* does nothing */ }
++            | select_statement           { /* does nothing */ }
++;
++
++select_statement :  SELECT LPAR exp RPAR
++            {
++                select_val_r = getNewRegister(program);
++
++                if ($3.expression_type == IMMEDIATE)
++                   gen_move_immediate(program, select_val_r, $3.value);
++                else
++                   gen_add_instruction(program, select_val_r, REG_0, $3.value, CG_DIRECT_ALL);
++
++            }
++                    LBRACE select_cases RBRACE
++;
++
++select_cases : select_cases select_case { /* does nothing */ }
++             | select_case              { /* does nothing */ }
++;
++
++select_case : CASE LPAR exp RPAR
++            {
++                select_label = newLabel(program);
++
++                int exp_val_r = getNewRegister(program);
++                if ($3.expression_type == IMMEDIATE)
++                   gen_move_immediate(program, exp_val_r, $3.value);
++                else
++                   gen_add_instruction(program, exp_val_r, REG_0, $3.value, CG_DIRECT_ALL);
++
++                gen_sub_instruction(program, REG_0, exp_val_r, select_val_r, CG_DIRECT_ALL);
++                gen_bne_instruction(program, select_label, 0);
++            }
++            COLON statements
++            {
++                assignLabel(program, select_label);
++            }
+ ;
+ 
+ read_write_statement : read_statement  { /* does nothing */ }
+diff --git a/acse/CORRECTION.md b/acse/CORRECTION.md
+new file mode 100644
+index 0000000..8976cff
+--- /dev/null
++++ b/acse/CORRECTION.md
+@@ -0,0 +1,2 @@
++- wasn't sure if by `takes as input a scalar value` the text meant an expression or identifier, but inside cases it also used `value` and in examples for cases there was an expression
++- I did it in a much simpler way compared to solution: stored simple register instead of whole expression, and  used global variable for cases as they are sequential and not nested
+\ No newline at end of file
+diff --git a/program.src b/program.src
+index e69de29..e900a0b 100644
+--- a/program.src
++++ b/program.src
+@@ -0,0 +1,11 @@
++int x = 128;
++int y = 125;
++select(x) {
++    case(y - 1):
++        write(0);
++    case(x):
++        x = x + 1;
++        write(1);
++    case(y + 3):
++        write(2);
++}
+\ No newline at end of file
