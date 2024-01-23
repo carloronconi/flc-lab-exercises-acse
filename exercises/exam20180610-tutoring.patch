@@ -11,7 +11,7 @@ index 35f9b73..fdbd8c7 100644
  {ID}              { yylval.svalue=strdup(yytext); return IDENTIFIER; }
  {DIGIT}+          { yylval.intval = atoi( yytext );
 diff --git a/acse/Acse.y b/acse/Acse.y
-index 0636dc6..c053a2b 100644
+index 0636dc6..bb23511 100644
 --- a/acse/Acse.y
 +++ b/acse/Acse.y
 @@ -94,6 +94,11 @@ t_io_infos *file_infos;    /* input and output files used by the compiler */
@@ -70,7 +70,7 @@ index 0636dc6..c053a2b 100644
 +                    ADDI Ri Ri #1
 +                    SUBI R0 Ri #5
 +                    BLT loop
-+                    /*
++                    */
 +
 +                    if(in_exists != 0){
 +                        yyerror("nested exists not allowed");
@@ -95,11 +95,11 @@ index 0636dc6..c053a2b 100644
 +                    int r_i = get_symbol_location(program, $2, 0);
 +                    gen_addi_instruction(program, r_i, r_i, 1);
 +
-+                    if (exists_array == null) { // it means there were no arrays in the expression
++                    if (exists_array == NULL) { // it means there were no arrays in the expression
 +                        yyerror("no array in exists expression!");
 +                        YYERROR;
 +                    }
-+                    t_axe_variable* v_array = get_variable(program, exists_array);
++                    t_axe_variable* v_array = getVariable(program, exists_array);
 +                    gen_subi_instruction(program, REG_0, r_i, v_array->arraySize);
 +                    gen_blt_instruction(program, exists_l_loop, 0);
 +
